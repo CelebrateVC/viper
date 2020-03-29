@@ -163,7 +163,7 @@ if __name__=='__main__':
     parser.add_argument('directory',help='OS Path for the extracts to dump to, default current directory',type=str,default=os.getcwd())
     parser.add_argument('URLs', help='single or multiple urls in vipergirls.to to dump',type=str,nargs='+')
     parser.add_argument('--errs',help='(default 3) Number of allowable images placed on unknown imagehosts before skipping post, set low to speed process and reduce stdout spam, set high if it is likely that the image hosts will change mid post and you want to be thorough ',type=int,default=3)
-    parser.add_argument('--prefix',help='the prefix name applied to high level folders made by program, if this is used to define a folder, assumption is made that that file exists',type=str)
+    parser.add_argument('--prefix',help='the prefix name applied to high level folders made by program, if this is used to define a folder, assumption is made that that file exists',type=str,default='')
     
     args=parser.parse_args()
     
