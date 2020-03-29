@@ -4,11 +4,11 @@ from bs4 import BeautifulSoup
 dl=True
 
 class external_page:
-    def __init__(self,url,callme=True):
+    def __init__(self,url,startingpath='',callme=True):
         self.imageurl=None
         if callme:
             domain = re.findall('://(.*?)\\.\\w*/',url)[0].split('www.')[-1]
-            bb=BeautifulSoup(requests.get(url).content)
+            bb=BeautifulSoup(requests.get(url).content,features="html.parser")
             self.domain=domain
             
 
@@ -18,6 +18,8 @@ class external_page:
                     self.imageurl = list_of_images[0].attrs['src']
                 else:
                     raise Exception('multiple possible images for link: {}'.format(url))
+            elif domain == 'vipergirls':
+                internal_page(url,startingpath,False)
             elif domain == 'imx':
                 raise Exception('This domain uses a Javascript contunue button that cannot be clicked in good faith to the user')
             elif domain == 'imagebam':
@@ -38,7 +40,7 @@ class external_page:
                 if len(link_to_image_link) == 1:
                     uu=link_to_image_link[0].attrs['href']
                     while uu!=url and len(bb.find_all('img'))==0:
-                        bb=BeautifulSoup(requests.get(uu).content)
+                        bb=BeautifulSoup(requests.get(uu).content,features="html.parser")
                         url=uu
                         uu=[k for k in bb.find_all('a') if 'title' in k.attrs][0].attrs['href']
                     if uu==url:
@@ -60,11 +62,11 @@ class external_page:
                 raise Exception('''unkown external domain {}, if this is a major domain, for your use on this site, feel free to add functionality for it'''.format(domain))
 
 class internal_page:
-    def __init__(self,url,startingpath=''):
+    def __init__(self,url,startingpath='',self_ref=True):
         print(url)
-        bb=BeautifulSoup(requests.get(url).content)
+        bb=BeautifulSoup(requests.get(url).content,features="html.parser")
         
-        if url.strip().lower() == 'https://vipergirls.to/forum.php':
+        if re.match('https://vipergirls.to/forum.php',url.strip().lower()):
             print('feeling brave are we?')
             subs=['https://vipergirls.to/'+r.attrs['href'] for k in bb.find_all('div',class_='forumrow') for r in k.find_all('a') if r.attrs['href'][:5]=='forum']
             
@@ -72,12 +74,12 @@ class internal_page:
                 os.mkdir('forum')
             
             for sub in subs:
-                internal_page(sub,'forum/')
+                internal_page(sub,'forum/',self_ref)
                 
                 
         elif re.match('https://vipergirls.to/forums/[^/]*$',url.strip().lower()): # subforum
             
-            forumname=re.findall('https://vipergirls.to/forums/([^/]*)',url.strip().lower())[0]
+            forumname=re.findall('https://vipergirls.to/forums/([^/?]*)',url.strip().lower())[0]
             print('scraping subforum {} '.format(forumname))
             
             threads = ['https://vipergirls.to/'+k.attrs['href'] for k in bb.find_all('a', class_='title')]
@@ -90,33 +92,39 @@ class internal_page:
                 os.mkdir(startingpath+forumname)            
             
             for thread in threads:
-                internal_page(thread,startingpath+forumname+'/')
+                internal_page(thread,startingpath+forumname+'/',self_ref)
                 
             for page in range(2,pages+1):
-                internal_page(url+'/page'+str(page),startingpath+forumname+'/')
+                internal_page(url+'/page'+str(page),startingpath+forumname+'/',self_ref)
                 
         elif re.match('https://vipergirls.to/forums/[^/]*/page\\d+',url):
             threads = ['https://vipergirls.to/'+k.attrs['href'] for k in bb.find_all('a', class_='title')]
             
             for thread in threads:
-                internal_page(thread,startingpath)
+                internal_page(thread,startingpath,self_ref)
                 
         elif re.match('https://vipergirls.to/threads/[^/]*',url):
+            
+            thread_name=re.findall('https://vipergirls.to/threads/([^/?]*)',url)[0]
+            
+            if not os.path.isdir(startingpath+'/'+thread_name):
+                os.mkdir(startingpath+thread_name)
+            
             for post in bb.find_all('li',class_='postbitim'):
                 
                 postID=post.attrs['id']
                 failpic=0
                 ext=external_page('',callme=False)
                 
-                if not os.path.isdir(startingpath+postID+'/'):
-                    os.mkdir(startingpath+postID+'/')
+                if not os.path.isdir(startingpath+thread_name+'/'+postID+'/'):
+                    os.mkdir(startingpath+thread_name+'/'+postID+'/')
                 else:
-                    if os.path.isfile(startingpath+postID+'/err.log'):
-                        os.remove(startingpath+postID+'/err.log')
+                    if os.path.isfile(startingpath+thread_name+'/'+postID+'/err.log'):
+                        os.remove(startingpath+thread_name+'/'+postID+'/err.log')
                 
                 for i,picture in enumerate(post.find_all('a',target='_blank')):
                     try:
-                        ext=external_page(picture.attrs['href'])
+                        ext=external_page(picture.attrs['href'],startingpath=startingpath,callme=self_ref)
                     except ConnectionError:
 #                        some domains are no longer valid and timeout, if this happens, regardless of policy skip post immediately
                         break
@@ -129,33 +137,36 @@ class internal_page:
                         
                         flnm = ext.imageurl.split('/')[-1]
                         
-                        if flnm not in os.listdir(startingpath+postID+'/'):
+                        if flnm not in os.listdir(startingpath+thread_name+'/'+postID+'/'):
                             try:
                                 with requests.get(ext.imageurl, stream=True) as r:
-                                        with open(startingpath+postID+'/'+flnm, 'wb') as f:
+                                        with open(startingpath+thread_name+'/'+postID+'/'+flnm, 'wb') as f:
                                             shutil.copyfileobj(r.raw, f)
                             except:
-                                try: os.remove(startingpath+postID+'/'+flnm)
+                                try: os.remove(startingpath+thread_name+'/'+postID+'/'+flnm)
                                 except: pass 
                                 continue
-                            if os.path.getsize(startingpath+postID+'/'+flnm)==13:
-                                os.remove(startingpath+postID+'/'+flnm)
-                                with open(startingpath+postID+'/err.log','a') as f:
+                            if os.path.getsize(startingpath+thread_name+'/'+postID+'/'+flnm)==13:
+                                os.remove(startingpath+thread_name+'/'+postID+'/'+flnm)
+                                with open(startingpath+thread_name+'/'+postID+'/err.log','a') as f:
                                     f.write(picture.attrs['href']+'\n')
                 
                 
                         
 
 
-                if len(os.listdir(startingpath+postID))==0:
-                    os.rmdir(startingpath+postID)
+                if len(os.listdir(startingpath+thread_name+'/'+postID+'/'))==0:
+                    os.rmdir(startingpath+thread_name+'/'+postID)
+                    
+            if len(os.listdir(startingpath+thread_name+'/'))==0:
+                os.rmdir(startingpath+thread_name)
 
 
             if re.match('https://vipergirls.to/threads/[^/]*$',url): # page 1
                 pages = bb.find('a',class_='popupctrl').text.split()[-1]
                 if pages.isnumeric():
                     for page in (range(2,int(pages)+1) if pages else []):
-                        internal_page(url+'/page'+str(page),startingpath)
+                        internal_page(url+'/page'+str(page),startingpath,self_ref)
 
                         
 if __name__=='__main__':
